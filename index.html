@@ -486,7 +486,7 @@ footer{text-align:center;padding:16px;font-size:11px;color:var(--muted);border-t
 <div class="right-col">
 
   <!-- SCORER CONTROLS -->
-  <div class="ctrl-panel" id="scorerControls" style="display:none">
+  <div class="ctrl-panel" id="scorerControls">
     <div class="sec-head"><h3>⚙ Scorer Controls</h3></div>
     <div class="ctrl-body">
       <div class="inn-sel">
@@ -1042,7 +1042,7 @@ function toast(msg){
 }
 
 /* ══ FIREBASE SYNC ══ */
-let appMode = 'viewer';
+let appMode = 'scorer';
 let fbListenerActive = false;
 let _lastPushedHash = null;
 
@@ -1056,6 +1056,7 @@ function setMode(mode) {
   document.getElementById('modeViewBtn').style.color = mode==='viewer'?'var(--cyan)':'var(--muted)';
   const ctrl = document.getElementById('scorerControls');
   if (ctrl) ctrl.style.display = mode==='scorer' ? '' : 'none';
+  if (mode === 'scorer') { _scorerLoaded = false; startLiveListener(); }
   toast(mode==='scorer' ? '⚙️ Scorer Mode – enter scores here' : '👁️ Viewer Mode – watching live');
   if (mode==='viewer') startLiveListener();
 }
@@ -1088,6 +1089,31 @@ function pushToFirebase() {
   } catch(e) { setFbStatus('red', 'Error'); }
 }
 
+function loadDataFromFirebase(data) {
+  if (!data) return;
+  innings = data.innings.map(s => { const ns = createState(); Object.assign(ns, s); ns.ballHistory = ns.ballHistory || []; return ns; });
+  currentInnings = data.currentInnings || 0;
+  battingTeamIdx = data.battingTeamIdx || 0;
+  totalOvers = data.totalOvers || 10;
+  if (document.getElementById('battingTeamSelect')) document.getElementById('battingTeamSelect').value = battingTeamIdx;
+  if (document.getElementById('totalOversInput')) document.getElementById('totalOversInput').value = totalOvers;
+  document.getElementById('miOvers').textContent = totalOvers;
+  ['inn1btn','inn2btn'].forEach((id,i) => document.getElementById(id).classList.toggle('active', i===currentInnings));
+  ['t-inn1','t-inn2'].forEach((id,i) => document.getElementById(id).classList.toggle('active', i===currentInnings));
+  const s2 = innings[currentInnings];
+  if (s2.striker && document.getElementById('strikerBtn')) document.getElementById('strikerBtn').textContent = s2.striker;
+  if (s2.nonStriker && document.getElementById('nonstrikerBtn')) document.getElementById('nonstrikerBtn').textContent = s2.nonStriker;
+  if (s2.bowler && document.getElementById('bowlerBtn')) document.getElementById('bowlerBtn').textContent = s2.bowler;
+  if (data.innings[1] && data.innings[1].complete) {
+    const i1=innings[0],i2=innings[1];
+    const tn1=TEAMS[1-battingTeamIdx].name,tn2=TEAMS[battingTeamIdx].name;
+    let res=i2.runs>i1.runs?'🏆 '+tn2+' WON by '+(10-i2.wickets)+' WICKETS!':i1.runs>i2.runs?'🏆 '+tn1+' WON by '+(i1.runs-i2.runs)+' RUNS!':'🤝 MATCH TIED!';
+    document.getElementById('resultText').textContent=res;
+    document.getElementById('resultBanner').classList.add('show');
+  }
+  render();
+}
+
 function startLiveListener() {
   if (!window._fbReady) return;
   if (fbListenerActive) return;
@@ -1097,30 +1123,19 @@ function startLiveListener() {
     const data = snapshot.val();
     if (!data) { setFbStatus('orange', 'No data yet'); return; }
     setFbStatus('green', 'Live ●');
-    if (appMode !== 'viewer') return;
-    innings = data.innings.map(s => { const ns = createState(); Object.assign(ns, s); ns.ballHistory = ns.ballHistory || []; return ns; });
-    currentInnings = data.currentInnings || 0;
-    battingTeamIdx = data.battingTeamIdx || 0;
-    totalOvers = data.totalOvers || 10;
-    if (document.getElementById('battingTeamSelect')) document.getElementById('battingTeamSelect').value = battingTeamIdx;
-    if (document.getElementById('totalOversInput')) document.getElementById('totalOversInput').value = totalOvers;
-    document.getElementById('miOvers').textContent = totalOvers;
-    ['inn1btn','inn2btn'].forEach((id,i) => document.getElementById(id).classList.toggle('active', i===currentInnings));
-    ['t-inn1','t-inn2'].forEach((id,i) => document.getElementById(id).classList.toggle('active', i===currentInnings));
-    const s2 = innings[currentInnings];
-    if (s2.striker && document.getElementById('strikerBtn')) document.getElementById('strikerBtn').textContent = s2.striker;
-    if (s2.nonStriker && document.getElementById('nonstrikerBtn')) document.getElementById('nonstrikerBtn').textContent = s2.nonStriker;
-    if (s2.bowler && document.getElementById('bowlerBtn')) document.getElementById('bowlerBtn').textContent = s2.bowler;
-    if (data.innings[1] && data.innings[1].complete) {
-      const i1=innings[0],i2=innings[1];
-      const tn1=TEAMS[1-battingTeamIdx].name,tn2=TEAMS[battingTeamIdx].name;
-      let res=i2.runs>i1.runs?'🏆 '+tn2+' WON by '+(10-i2.wickets)+' WICKETS!':i1.runs>i2.runs?'🏆 '+tn1+' WON by '+(i1.runs-i2.runs)+' RUNS!':'🤝 MATCH TIED!';
-      document.getElementById('resultText').textContent=res;
-      document.getElementById('resultBanner').classList.add('show');
+    // Both viewer AND scorer load from Firebase on first load (refresh recovery)
+    if (appMode === 'viewer') {
+      loadDataFromFirebase(data);
+    } else if (appMode === 'scorer' && !_scorerLoaded) {
+      // On refresh, scorer loads last saved state from Firebase
+      _scorerLoaded = true;
+      loadDataFromFirebase(data);
+      toast('♻️ Score restored from Firebase!');
     }
-    render();
   }, () => { setFbStatus('red', 'DB Error'); });
 }
+
+let _scorerLoaded = false;
 
 function setFbStatus(color, text) {
   const dot=document.getElementById('fbDot'), txt=document.getElementById('fbStatusTxt');
