@@ -486,7 +486,7 @@ footer{text-align:center;padding:16px;font-size:11px;color:var(--muted);border-t
 <div class="right-col">
 
   <!-- SCORER CONTROLS -->
-  <div class="ctrl-panel" id="scorerControls">
+  <div class="ctrl-panel" id="scorerControls" style="display:none">
     <div class="sec-head"><h3>⚙ Scorer Controls</h3></div>
     <div class="ctrl-body">
       <div class="inn-sel">
@@ -1042,7 +1042,7 @@ function toast(msg){
 }
 
 /* ══ FIREBASE SYNC ══ */
-let appMode = 'scorer';
+let appMode = 'viewer';
 let fbListenerActive = false;
 let _lastPushedHash = null;
 
